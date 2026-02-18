@@ -9,6 +9,12 @@
   ],
   "author": "Alec Lloyd Probert",
   "license": "MIT",
+  "homepage": "https://svg-path-gradient.graphieros.com/",
+  "keywords": [
+    "svg",
+    "path",
+    "gradient"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/graphieros/svg-path-gradient.git"
