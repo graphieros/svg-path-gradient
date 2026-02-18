@@ -8,6 +8,8 @@ svg-path-gradient is an open-source library without dependency to create gradien
 [![GitHub issues](https://img.shields.io/github/issues/graphieros/svg-path-gradient)](https://github.com/graphieros/svg-path-gradient/issues)
 [![GitHub Repo stars](https://img.shields.io/github/stars/graphieros/svg-path-gradient)](https://github.com/graphieros/svg-path-gradient)
 
+<img width="1280" height="640" alt="spg-og" src="https://github.com/user-attachments/assets/09cef3b1-37fe-45b8-893e-0ca4c98f61cf" />
+
 ## Installation
 
 ```bash
