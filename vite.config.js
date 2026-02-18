@@ -1,18 +1,30 @@
-// vite.config.ts
 import { defineConfig } from 'vite';
 import path from 'path';
+import fs from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import dts from 'vite-plugin-dts';
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+function copyReadmePlugin() {
+    return {
+        name: 'copy-readme',
+        closeBundle() {
+            const source = path.resolve(__dirname, 'README.md');
+            const destination = path.resolve(__dirname, 'dist/README.md');
+
+            if (fs.existsSync(source)) {
+                fs.copyFileSync(source, destination);
+            }
+        }
+    };
+}
 
 export default defineConfig({
     plugins: [
         dts({
-            // only generate types for your entry
             include: ['src/index.ts'],
-            // rename the file before it’s written to disk
             beforeWriteFile(filePath, content) {
                 if (filePath.endsWith('index.d.ts')) {
                     return {
@@ -23,10 +35,10 @@ export default defineConfig({
                         content
                     };
                 }
-                // leave any other files untouched
                 return { filePath, content };
             }
-        })
+        }),
+        copyReadmePlugin()
     ],
     build: {
         lib: {
@@ -36,7 +48,9 @@ export default defineConfig({
         },
         rollupOptions: {
             external: [],
-            output: { globals: {} },
+            output: {
+                globals: {}
+            }
         },
         outDir: 'dist',
         emptyOutDir: true,
