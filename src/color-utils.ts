@@ -1,6 +1,3 @@
-// color-utils.ts
-// Browser-only utilities: accept (almost) any CSS color format and return RGBA.
-
 export type RgbaColor = {
     red: number;
     green: number;

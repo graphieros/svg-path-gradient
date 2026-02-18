@@ -1,4 +1,3 @@
-import './style.css';
 import { SvgPathGradient } from '../dist/svg-path-gradient';
 
 const spline = `
