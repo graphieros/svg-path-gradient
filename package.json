@@ -1,0 +1,33 @@
+{
+  "name": "svg-path-gradient",
+  "private": false,
+  "version": "0.1.0",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "author": "Alec Lloyd Probert",
+  "license": "MIT",
+  "main": "dist/svg-path-gradient.umd.cjs",
+  "module": "dist/svg-path-gradient.js",
+  "exports": {
+    ".": {
+      "import": "./dist/svg-path-gradient.js",
+      "require": "./dist/svg-path-gradient.umd.cjs"
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "build": "tsc && vitest run && vite build"
+  },
+  "devDependencies": {
+    "jsdom": "^28.1.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.1",
+    "vite-plugin-dts": "^4.5.4",
+    "vitest": "^4.0.18"
+  }
+}
