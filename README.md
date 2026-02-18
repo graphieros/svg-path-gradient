@@ -8,9 +8,21 @@ svg-path-gradient is an open-source library without dependency to create gradien
 
 ```bash
 npm install svg-path-gradient
+```
+
+```bash
 pnpm add svg-path-gradient
+```
+
+```bash
 yarn add svg-path-gradient
+```
+
+```bash
 bun add svg-path-gradient
+```
+
+```bash
 deno add npm:svg-path-gradient
 ```
 
