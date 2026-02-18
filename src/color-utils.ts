@@ -20,7 +20,7 @@ function getShared2dContext(): CanvasRenderingContext2D {
         canvas.width = 1;
         canvas.height = 1;
 
-        const ctx = canvas.getContext("2d");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
         if (!ctx) {
             throw new Error("color-utils: unable to get 2D canvas context.");
         }
