@@ -1,8 +1,12 @@
 # svg-path-gradient
 
 Create beautiful, flowing stroke gradients that follow your SVG paths.
-
 svg-path-gradient is an open-source library without dependency to create gradient paths in seconds.
+
+[![Open on npmx.dev](https://npmx.dev/api/registry/badge/version/svg-path-gradient)](https://npmx.dev/svg-path-gradient)
+[![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/graphieros/svg-path-gradient?tab=MIT-1-ov-file#readme)
+[![GitHub issues](https://img.shields.io/github/issues/graphieros/svg-path-gradient)](https://github.com/graphieros/svg-path-gradient/issues)
+[![GitHub Repo stars](https://img.shields.io/github/stars/graphieros/svg-path-gradient)](https://github.com/graphieros/svg-path-gradient)
 
 ## Installation
 
