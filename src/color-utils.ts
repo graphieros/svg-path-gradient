@@ -137,3 +137,107 @@ function isColorLikelyBlack(colorString: string): boolean {
         c === "rgba(0, 0, 0, 0)"
     );
 }
+
+/**
+ * Convert a single sRGB channel value (0–255) to linear RGB space (0–1).
+ *
+ * @param channelByte sRGB channel value in the range 0–255.
+ * @returns Linear RGB channel value in the range 0–1.
+ */
+export function srgbChannelToLinear(channelByte: number): number {
+    const normalized = clampUnit(channelByte / 255);
+    if (normalized <= 0.04045) return normalized / 12.92;
+    return Math.pow((normalized + 0.055) / 1.055, 2.4);
+}
+
+/**
+ * Convert a single linear RGB channel value (0–1) to sRGB byte space (0–255).
+ *
+ * @param channel Linear RGB channel value in the range 0–1.
+ * @returns sRGB channel value as an integer in the range 0–255.
+ */
+export function linearChannelToSrgb(channel: number): number {
+    const clamped = clampUnit(channel);
+    let srgb: number;
+    if (clamped <= 0.0031308) srgb = clamped * 12.92;
+    else srgb = 1.055 * Math.pow(clamped, 1 / 2.4) - 0.055;
+    return clampByte(srgb * 255);
+}
+
+/**
+ * Linearly interpolate between two RGBA colors.
+ *
+ * Interpolation behavior depends on `colorSpace`:
+ * - "srgb": interpolates channels directly in sRGB byte space
+ * - "linearRGB": converts channels to linear RGB, interpolates, then converts back to sRGB
+ *
+ * Alpha is always interpolated linearly.
+ *
+ * @param from Starting color in RGBA (0–255 RGB, 0–1 alpha).
+ * @param to Ending color in RGBA (0–255 RGB, 0–1 alpha).
+ * @param t Interpolation factor (typically in [0, 1]).
+ * @param colorSpace Color interpolation space ("srgb" | "linearRGB").
+ * @returns Interpolated RGBA color.
+ */
+export function interpolateRgbaColor(
+    from: RgbaColor,
+    to: RgbaColor,
+    t: number,
+    colorSpace: "srgb" | "linearRGB"
+): RgbaColor {
+    const tt = clampUnit(t);
+
+    if (colorSpace === "linearRGB") {
+        const fromR = srgbChannelToLinear(from.red);
+        const fromG = srgbChannelToLinear(from.green);
+        const fromB = srgbChannelToLinear(from.blue);
+
+        const toR = srgbChannelToLinear(to.red);
+        const toG = srgbChannelToLinear(to.green);
+        const toB = srgbChannelToLinear(to.blue);
+
+        const mixedR = fromR + (toR - fromR) * tt;
+        const mixedG = fromG + (toG - fromG) * tt;
+        const mixedB = fromB + (toB - fromB) * tt;
+
+        return {
+            red: linearChannelToSrgb(mixedR),
+            green: linearChannelToSrgb(mixedG),
+            blue: linearChannelToSrgb(mixedB),
+            alpha: from.alpha + (to.alpha - from.alpha) * tt,
+        };
+    }
+
+    return {
+        red: from.red + (to.red - from.red) * tt,
+        green: from.green + (to.green - from.green) * tt,
+        blue: from.blue + (to.blue - from.blue) * tt,
+        alpha: from.alpha + (to.alpha - from.alpha) * tt,
+    };
+}
+
+/**
+ * Interpolate between two CSS colors and return a CSS color string suitable for SVG output.
+ *
+ * This uses the browser color parser via `colorToRgba`, then interpolates in the requested
+ * color space, and outputs a compact CSS string using `rgbaToCss`.
+ *
+ * @param fromColor Any CSS color string.
+ * @param toColor Any CSS color string.
+ * @param t Interpolation factor (typically in [0, 1]).
+ * @param colorSpace Color interpolation space ("srgb" | "linearRGB").
+ * @param referenceElement Optional reference element used to resolve `currentColor`.
+ * @returns A CSS color string (`#rrggbb` or `rgba(...)`).
+ */
+export function interpolateCssColors(
+    fromColor: string,
+    toColor: string,
+    t: number,
+    colorSpace: "srgb" | "linearRGB",
+    referenceElement?: Element | null
+): string {
+    const fromRgba = colorToRgba(fromColor, referenceElement);
+    const toRgba = colorToRgba(toColor, referenceElement);
+    const mixed = interpolateRgbaColor(fromRgba, toRgba, t, colorSpace);
+    return rgbaToCss(mixed);
+}

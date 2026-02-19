@@ -25,3 +25,25 @@ export function parseOptionalNumber(value: string | undefined): number | undefin
     const parsed = Number.parseFloat(value);
     return Number.isFinite(parsed) ? parsed : undefined;
 }
+
+/**
+ * Map a value within a range to a normalized interpolation factor.
+ *
+ * - Returns 0 when `value <= minimum` (when clamped).
+ * - Returns 1 when `value >= maximum` (when clamped).
+ * - Returns a linear ratio otherwise.
+ *
+ * If `minimum === maximum`, this returns 0 to avoid division by zero.
+ *
+ * @param value The value to normalize.
+ * @param minimum The lower bound of the range.
+ * @param maximum The upper bound of the range.
+ * @param clamp Whether to clamp the result to the range [0, 1]. Defaults to true.
+ * @returns A number typically in the range [0, 1] when clamped.
+ */
+export function inverseLerp(value: number, minimum: number, maximum: number, clamp = true): number {
+    const span = maximum - minimum;
+    if (span === 0) return 0;
+    const t = (value - minimum) / span;
+    return clamp ? clampNumber(t, 0, 1) : t;
+}
