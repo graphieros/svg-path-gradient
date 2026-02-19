@@ -1,5 +1,5 @@
-import { colorsToRgba, type RgbaColor } from "./color-utils";
-import { clampNumber, formatNumber, parseOptionalNumber, roundNumber, toTwoDigitHex } from "./number-utils";
+import { colorsToRgba, interpolateRgbaColor, type RgbaColor } from "./color-utils";
+import { clampNumber, formatNumber, inverseLerp, parseOptionalNumber, roundNumber, toTwoDigitHex } from "./number-utils";
 
 type SvgPathGradientReturnMode = "string" | "dom";
 
@@ -27,6 +27,15 @@ type GradientStrokePathOptions = {
     samplePointLimitPerSegment?: number; // safety limit
     colorReferenceElement?: Element | null; // optional, for resolving currentColor
     returnMode?: SvgPathGradientReturnMode; // return a string to inject in HTML, or DOM nodes to append
+    temperatureMode?: null | "vertical" | "horizontal"; // use bi-color directional gradients
+    temperatureColors?: [string, string]; // pair of colors for the temperature mode
+};
+
+type SegmentBounds = {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
 };
 
 const SvgNamespaceUri = "http://www.w3.org/2000/svg";
@@ -81,12 +90,17 @@ let sharedHiddenPath: SVGPathElement | null = null;
  * @throws If `colors` is empty.
  * @throws If executed outside a browser environment (no `document`).
  */
-function SvgPathGradient(pathData: string, colors: string[], options: GradientStrokePathOptions = {}): SvgPathGradientReturn {
+function SvgPathGradient(pathData: string, colors: string[] | null | undefined, options: GradientStrokePathOptions = {}): SvgPathGradientReturn {
     if (!pathData || typeof pathData !== "string") {
         throw new Error("SvgPathGradient: pathData must be a non-empty string.");
     }
-    if (!Array.isArray(colors) || colors.length === 0) {
-        throw new Error("SvgPathGradient: colors must be a non-empty array.");
+    
+    const temperatureMode = options.temperatureMode ?? null;
+
+    if (temperatureMode === null) {
+        if (!Array.isArray(colors) || colors.length === 0) {
+            throw new Error("SvgPathGradient: colors must be a non-empty array when temperatureMode is not enabled.");
+        }
     }
 
     const returnMode: SvgPathGradientReturnMode = options.returnMode ?? "string";
@@ -109,9 +123,12 @@ function SvgPathGradient(pathData: string, colors: string[], options: GradientSt
     const svgPathElement = getSharedOffscreenPath(pathData);
     const totalLength = svgPathElement.getTotalLength();
 
-    const rgbaStopsInput: RgbaColor[] = colorsToRgba(colors, options.colorReferenceElement);
+    const rgbaStopsInput: RgbaColor[] =
+    temperatureMode === null
+        ? colorsToRgba(colors as string[], options.colorReferenceElement)
+        : [];
 
-    if (!(totalLength > 0)) {
+    if (temperatureMode === null && !(totalLength > 0)) {
         const stroke = normalizeOutputColor(rgbaStopsInput[0]);
 
         if (returnMode === "dom") {
@@ -138,7 +155,7 @@ function SvgPathGradient(pathData: string, colors: string[], options: GradientSt
         );
     }
 
-    if (rgbaStopsInput.length === 1) {
+    if (temperatureMode === null && rgbaStopsInput.length === 1) {
         const stroke = normalizeOutputColor(rgbaStopsInput[0]);
 
         if (returnMode === "dom") {
@@ -167,11 +184,29 @@ function SvgPathGradient(pathData: string, colors: string[], options: GradientSt
 
     const colorSpace: ColorInterpolationSpace = options.colorSpace ?? "linearRGB";
 
-    const evenStops = buildEvenStops(rgbaStopsInput);
-    const gradientStops: { position: number; rgba: RgbaColor }[] = new Array(evenStops.length);
-    for (let i = 0; i < evenStops.length; i += 1) {
-        gradientStops[i] = { position: evenStops[i].position, rgba: evenStops[i].rgba };
+    if (temperatureMode !== null) {
+        const tc = options.temperatureColors;
+        if (!Array.isArray(tc) || tc.length !== 2) {
+            throw new Error('SvgPathGradient: temperatureColors must be a tuple of exactly 2 colors when temperatureMode is enabled.');
+        }
     }
+
+    const temperatureRgbaStops: [RgbaColor, RgbaColor] | null =
+        temperatureMode !== null
+            ? (colorsToRgba(options.temperatureColors as [string, string], options.colorReferenceElement) as [RgbaColor, RgbaColor])
+            : null;
+
+    const gradientStops: { position: number; rgba: RgbaColor }[] =
+    temperatureMode === null
+        ? (() => {
+                const evenStops = buildEvenStops(rgbaStopsInput);
+                const stops: { position: number; rgba: RgbaColor }[] = new Array(evenStops.length);
+                for (let i = 0; i < evenStops.length; i += 1) {
+                    stops[i] = { position: evenStops[i].position, rgba: evenStops[i].rgba };
+                }
+                return stops;
+            })()
+        : [];
 
     const maxSegmentLength = computeMaxSegmentLength(totalLength, strokeWidth, options.maxSegmentLength);
     const segmentCount = computeSegmentCount(totalLength, options.segments, maxSegmentLength);
@@ -190,12 +225,15 @@ function SvgPathGradient(pathData: string, colors: string[], options: GradientSt
 
     const sharedSegmentAttributesString = buildSharedSegmentAttributesString(segmentAttributeMap);
 
-    const segmentPathStrings: string[] = returnMode === "string" ? new Array(segmentCount) : [];
+ const segmentPathStrings: string[] = returnMode === "string" ? new Array(segmentCount) : [];
     const segmentNodes: SVGPathElement[] = returnMode === "dom" ? new Array(segmentCount) : [];
     let producedCount = 0;
 
+    const temperatureSegmentPathData: string[] | null = temperatureMode !== null ? new Array(segmentCount) : null;
+    const temperatureSegmentBounds: SegmentBounds[] | null = temperatureMode !== null ? new Array(segmentCount) : null;
+
     let stopIndex = 0;
-    const lastStopIndex = gradientStops.length - 2;
+    const lastStopIndex = temperatureMode === null ? gradientStops.length - 2 : 0;
 
     for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex += 1) {
         const rawStartLength = segmentIndex * baseSegmentLength;
@@ -211,6 +249,22 @@ function SvgPathGradient(pathData: string, colors: string[], options: GradientSt
         endLength = clampNumber(endLength, 0, totalLength);
 
         if (!(endLength > startLength)) continue;
+
+        if (temperatureMode !== null) {
+            const sampled = buildSegmentPathDataFromArcLengthSamplingWithBounds(
+                svgPathElement,
+                startLength,
+                endLength,
+                flattenTolerance,
+                decimalPlaces,
+                samplePointLimitPerSegment
+            );
+
+            temperatureSegmentPathData![producedCount] = sampled.pathData;
+            temperatureSegmentBounds![producedCount] = sampled.bounds;
+            producedCount += 1;
+            continue;
+        }
 
         const midpointLength = (startLength + endLength) * 0.5;
         const gradientPosition = midpointLength / totalLength;
@@ -241,6 +295,51 @@ function SvgPathGradient(pathData: string, colors: string[], options: GradientSt
             );
         }
         producedCount += 1;
+    }
+
+    if (temperatureMode !== null) {
+        if (producedCount !== temperatureSegmentPathData!.length) temperatureSegmentPathData!.length = producedCount;
+        if (producedCount !== temperatureSegmentBounds!.length) temperatureSegmentBounds!.length = producedCount;
+
+        let globalMin = Number.POSITIVE_INFINITY;
+        let globalMax = Number.NEGATIVE_INFINITY;
+
+        for (let i = 0; i < temperatureSegmentBounds!.length; i += 1) {
+            const b = temperatureSegmentBounds![i];
+            const minCoord = temperatureMode === "vertical" ? b.minY : b.minX;
+            const maxCoord = temperatureMode === "vertical" ? b.maxY : b.maxX;
+
+            if (minCoord < globalMin) globalMin = minCoord;
+            if (maxCoord > globalMax) globalMax = maxCoord;
+        }
+
+        const high = temperatureRgbaStops![0];
+        const low = temperatureRgbaStops![1];
+
+        for (let i = 0; i < temperatureSegmentBounds!.length; i += 1) {
+            const b = temperatureSegmentBounds![i];
+
+            const segMin = temperatureMode === "vertical" ? b.minY : b.minX;
+            const segMax = temperatureMode === "vertical" ? b.maxY : b.maxX;
+
+            const coordValue = (segMin + segMax) * 0.5;
+
+            const t = inverseLerp(coordValue, globalMin, globalMax, true);
+
+            const mixed =
+                temperatureMode === "vertical"
+                    ? interpolateRgbaColor(high, low, t, colorSpace)
+                    : interpolateRgbaColor(low, high, t, colorSpace);
+
+            const strokeColor = normalizeOutputColor(mixed);
+            const segmentPathData = temperatureSegmentPathData![i];
+
+            if (returnMode === "dom") {
+                segmentNodes[i] = createPathNodeFromSharedAttributes(segmentPathData, strokeColor, segmentAttributeMap);
+            } else {
+                segmentPathStrings[i] = buildPathElementStringFast(segmentPathData, strokeColor, sharedSegmentAttributesString);
+            }
+        }
     }
 
     if (returnMode === "dom") {
@@ -510,6 +609,68 @@ function buildSegmentPathDataFromArcLengthSampling(
     }
 
     return pathData;
+}
+
+/**
+ * Build a polyline path segment by sampling an existing SVG path over an arc-length range,
+ * while also returning bounds for the sampled points (min/max X and Y).
+ *
+ * This is used by "temperature" coloring modes to compute segment colors based on
+ * geometric coordinates instead of arc-length gradient stops.
+ *
+ * @param pathElement SVG path element used for geometry queries.
+ * @param startLength Arc-length (in user units) where the segment begins.
+ * @param endLength Arc-length (in user units) where the segment ends.
+ * @param samplingStep Target arc-length distance between sample points.
+ * @param decimalPlaces Number of decimal places used when rounding coordinates.
+ * @param samplePointLimit Maximum number of sample points allowed for this segment.
+ * @returns An object containing the SVG path `d` string and min/max X/Y bounds for the sampled points.
+ */
+function buildSegmentPathDataFromArcLengthSamplingWithBounds(
+    pathElement: SVGPathElement,
+    startLength: number,
+    endLength: number,
+    samplingStep: number,
+    decimalPlaces: number,
+    samplePointLimit: number
+): { pathData: string; bounds: SegmentBounds } {
+    const segmentLength = endLength - startLength;
+
+    let sampleCount = Math.ceil(segmentLength / samplingStep) + 1;
+    if (sampleCount < 2) sampleCount = 2;
+    if (sampleCount > samplePointLimit) sampleCount = samplePointLimit;
+
+    const step = sampleCount > 1 ? segmentLength / (sampleCount - 1) : 0;
+
+    const firstPoint = pathElement.getPointAtLength(startLength);
+
+    let minX = firstPoint.x;
+    let maxX = firstPoint.x;
+    let minY = firstPoint.y;
+    let maxY = firstPoint.y;
+
+    let pathData = `M ${formatNumber(roundNumber(firstPoint.x, decimalPlaces))} ${formatNumber(
+        roundNumber(firstPoint.y, decimalPlaces)
+    )}`;
+
+    for (let sampleIndex = 1; sampleIndex < sampleCount; sampleIndex += 1) {
+        const lengthAtSample = startLength + sampleIndex * step;
+        const point = pathElement.getPointAtLength(lengthAtSample);
+
+        if (point.x < minX) minX = point.x;
+        if (point.x > maxX) maxX = point.x;
+        if (point.y < minY) minY = point.y;
+        if (point.y > maxY) maxY = point.y;
+
+        pathData += ` L ${formatNumber(roundNumber(point.x, decimalPlaces))} ${formatNumber(
+            roundNumber(point.y, decimalPlaces)
+        )}`;
+    }
+
+    return {
+        pathData,
+        bounds: { minX, maxX, minY, maxY },
+    };
 }
 
 /**
