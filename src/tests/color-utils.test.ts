@@ -1,5 +1,15 @@
 import { describe, it, expect, beforeEach, beforeAll } from "vitest";
-import { colorToRgba, colorsToRgba, rgbaToCss, rgbaToCssRgba, type RgbaColor } from "../color-utils";
+import {
+    colorToRgba,
+    colorsToRgba,
+    rgbaToCss,
+    rgbaToCssRgba,
+    srgbChannelToLinear,
+    linearChannelToSrgb,
+    interpolateRgbaColor,
+    interpolateCssColors,
+    type RgbaColor,
+} from "../color-utils";
 
 type Pixel = [number, number, number, number];
 
@@ -18,7 +28,6 @@ function expectRgbaClose(actual: RgbaColor, expected: RgbaColor, alphaEpsilon = 
 function normalizeFillStyleOrKeep(previous: string, next: string): string {
     const v = next.trim();
 
-    // --- hex ---
     if (/^#([0-9a-fA-F]{3})$/.test(v)) {
         // normalize #rgb -> #rrggbb
         const m = v.slice(1);
@@ -215,5 +224,120 @@ describe("color-utils", () => {
         it("returns rgba() when alpha < 1", () => {
             expect(rgbaToCss({ red: 255, green: 0, blue: 0, alpha: 0.5 }, 2)).toBe("rgba(255, 0, 0, 0.5)");
         });
+    });
+});
+
+describe("srgbChannelToLinear", () => {
+    it("maps 0 -> 0 and 255 -> 1", () => {
+        expect(srgbChannelToLinear(0)).toBe(0);
+        expect(srgbChannelToLinear(255)).toBe(1);
+    });
+
+    it("clamps input outside [0,255]", () => {
+        expect(srgbChannelToLinear(-10)).toBe(0);
+        expect(srgbChannelToLinear(300)).toBe(1);
+    });
+
+    it("converts a known mid value close to expected (128)", () => {
+        // sRGB 0.5 -> linear approx 0.2140...
+        const v = srgbChannelToLinear(128);
+        expect(Math.abs(v - 0.2140)).toBeLessThanOrEqual(0.002);
+    });
+});
+
+describe("linearChannelToSrgb", () => {
+    it("maps 0 -> 0 and 1 -> 255", () => {
+        expect(linearChannelToSrgb(0)).toBe(0);
+        expect(linearChannelToSrgb(1)).toBe(255);
+    });
+
+    it("clamps input outside [0,1]", () => {
+        expect(linearChannelToSrgb(-0.5)).toBe(0);
+        expect(linearChannelToSrgb(2)).toBe(255);
+    });
+
+    it("round-trips common byte values within 1 unit", () => {
+        const samples = [0, 1, 2, 10, 64, 128, 200, 254, 255];
+        for (const b of samples) {
+            const lin = srgbChannelToLinear(b);
+            const back = linearChannelToSrgb(lin);
+            expect(Math.abs(back - b)).toBeLessThanOrEqual(1);
+        }
+    });
+});
+
+describe("interpolateRgbaColor", () => {
+    it("clamps t below 0 and above 1", () => {
+        const from: RgbaColor = { red: 0, green: 0, blue: 0, alpha: 0 };
+        const to: RgbaColor = { red: 255, green: 255, blue: 255, alpha: 1 };
+
+        expect(interpolateRgbaColor(from, to, -1, "srgb")).toEqual(from);
+        expect(interpolateRgbaColor(from, to, 2, "srgb")).toEqual(to);
+    });
+
+    it("interpolates in sRGB space directly", () => {
+        const from: RgbaColor = { red: 0, green: 0, blue: 0, alpha: 0 };
+        const to: RgbaColor = { red: 255, green: 255, blue: 255, alpha: 1 };
+
+        const mid = interpolateRgbaColor(from, to, 0.5, "srgb");
+        expect(mid.red).toBeCloseTo(127.5, 8);
+        expect(mid.green).toBeCloseTo(127.5, 8);
+        expect(mid.blue).toBeCloseTo(127.5, 8);
+        expect(Math.abs(mid.alpha - 0.5)).toBeLessThanOrEqual(1 / 255);
+    });
+
+    it("interpolates in linear RGB space and differs from sRGB midpoint", () => {
+        const from: RgbaColor = { red: 0, green: 0, blue: 0, alpha: 1 };
+        const to: RgbaColor = { red: 255, green: 255, blue: 255, alpha: 1 };
+
+        const midSrgb = interpolateRgbaColor(from, to, 0.5, "srgb");
+        const midLinear = interpolateRgbaColor(from, to, 0.5, "linearRGB");
+
+        // LinearRGB midpoint is perceptually brighter than 127.5 in sRGB byte space.
+        expect(midLinear.red).toBeGreaterThan(midSrgb.red);
+        expect(midLinear.green).toBeGreaterThan(midSrgb.green);
+        expect(midLinear.blue).toBeGreaterThan(midSrgb.blue);
+
+        // Sanity range: should be around ~188 (common expected value for linear midpoint)
+        expect(midLinear.red).toBeGreaterThanOrEqual(180);
+        expect(midLinear.red).toBeLessThanOrEqual(195);
+    });
+
+    it("interpolates alpha linearly in both modes", () => {
+        const from: RgbaColor = { red: 10, green: 20, blue: 30, alpha: 0.25 };
+        const to: RgbaColor = { red: 200, green: 210, blue: 220, alpha: 0.75 };
+
+        const midSrgb = interpolateRgbaColor(from, to, 0.5, "srgb");
+        const midLinear = interpolateRgbaColor(from, to, 0.5, "linearRGB");
+
+        expect(Math.abs(midSrgb.alpha - 0.5)).toBeLessThanOrEqual(1 / 255);
+        expect(Math.abs(midLinear.alpha - 0.5)).toBeLessThanOrEqual(1 / 255);
+    });
+});
+
+describe("interpolateCssColors", () => {
+    it("returns a hex string when both endpoints are opaque", () => {
+        const out = interpolateCssColors("#000000", "#ffffff", 0.5, "srgb");
+        expect(out).toMatch(/^#[0-9a-f]{6}$/);
+    });
+
+    it("returns rgba() when any endpoint has alpha < 1", () => {
+        const out = interpolateCssColors("rgba(0, 0, 0, 0.0)", "rgba(255, 0, 0, 1)", 0.5, "srgb");
+        expect(out).toMatch(/^rgba\(/i);
+    });
+
+    it('supports "currentColor" with a reference element', () => {
+        const el = document.createElement("div");
+        el.style.color = "rgb(12, 34, 56)";
+        document.body.appendChild(el);
+
+        const out = interpolateCssColors("currentColor", "white", 0, "srgb", el);
+        expect(out).toBe("#0c2238");
+    });
+
+    it("differs between srgb and linearRGB for the same endpoints at mid t", () => {
+        const srgb = interpolateCssColors("black", "white", 0.5, "srgb");
+        const linear = interpolateCssColors("black", "white", 0.5, "linearRGB");
+        expect(srgb).not.toBe(linear);
     });
 });
