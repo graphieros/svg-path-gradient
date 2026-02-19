@@ -84,6 +84,40 @@ const straightDom = SvgPathGradient(
   }
 ) as { group: SVGGElement };
 
+const splineTemperatureVertical = SvgPathGradient(
+  path,
+  null,
+  {
+    strokeWidth: 1,
+    // segments: 24,
+    temperatureMode: 'vertical',
+    temperatureColors: ['#00ff00', '#ff0000'],
+    attrs: {
+      'stroke-width': '12',
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round'
+    },
+    groupAttrs: { id: 'spline-temperature-vertical' }
+  }
+);
+
+const straightTemperatureHorizontal = SvgPathGradient(
+  path,
+  null,
+  {
+    strokeWidth: 1,
+    // segments: 24,
+    temperatureMode: 'horizontal',
+    temperatureColors: ['#00ff00', '#ff0000'],
+    attrs: {
+      'stroke-width': '12',
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round'
+    },
+    groupAttrs: { id: 'straight-temperature-horizontal' }
+  }
+);
+
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 <div class="container">
@@ -105,19 +139,40 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     ${straightGradientPath}
   </svg>
 
+
+    <svg
+    id="svg-string-3"
+    width="100%"
+    viewBox="0 0 900 500"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    ${splineTemperatureVertical}
+  </svg>
+
   <svg
-    id="svg-dom"
+    id="svg-string-4"
+    width="100%"
+    viewBox="0 0 900 500"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    ${straightTemperatureHorizontal}
+  </svg>
+
+    <svg
+    id="svg-dom-3"
     width="100%"
     viewBox="0 0 900 500"
     xmlns="http://www.w3.org/2000/svg"
   ></svg>
 
   <svg
-    id="svg-dom-2"
+    id="svg-dom-4"
     width="100%"
     viewBox="0 0 900 500"
     xmlns="http://www.w3.org/2000/svg"
   ></svg>
+
+
 </div>
 `;
 
@@ -127,4 +182,3 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 //   document.getElementById('svg-dom')!.appendChild(splineDom.group);
 //   document.getElementById('svg-dom-2')!.appendChild(straightDom.group);
 // })
-
